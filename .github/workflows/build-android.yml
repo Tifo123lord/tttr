@@ -6,6 +6,7 @@ on:
 
 jobs:
   build:
+    name: Build Deadland After Zero
     runs-on: ubuntu-22.04
 
     steps:
@@ -24,25 +25,60 @@ jobs:
           version: 4.4.1
           use-dotnet: false
 
-      - name: Install Android SDK
+      - name: Install Android build tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y android-sdk
-          echo "ANDROID_HOME=/usr/lib/android-sdk" >> "$GITHUB_ENV"
+          sudo apt-get install -y wget unzip
+          mkdir -p "$HOME/android-sdk/cmdline-tools"
+          wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O /tmp/android-tools.zip
+          unzip -q /tmp/android-tools.zip -d /tmp/android-tools
+          mkdir -p "$HOME/android-sdk/cmdline-tools/latest"
+          mv /tmp/android-tools/cmdline-tools/* "$HOME/android-sdk/cmdline-tools/latest/"
+          echo "ANDROID_HOME=$HOME/android-sdk" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$HOME/android-sdk" >> "$GITHUB_ENV"
+          echo "$HOME/android-sdk/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+          echo "$HOME/android-sdk/platform-tools" >> "$GITHUB_PATH"
 
-      - name: Check project
+      - name: Install Android SDK packages
         run: |
-          find . -name project.godot
-          find . -name '*.gdextension'
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
 
-      - name: Build APK
+      - name: Install Godot Android export templates
+        run: |
+          mkdir -p "$HOME/.local/share/godot/export_templates/4.4.1.stable"
+          wget -q https://github.com/godotengine/godot/releases/download/4.4.1-stable/Godot_v4.4.1-stable_export_templates.tpz -O /tmp/godot-templates.tpz
+          unzip -q /tmp/godot-templates.tpz -d /tmp/godot-templates
+          cp /tmp/godot-templates/templates/* "$HOME/.local/share/godot/export_templates/4.4.1.stable/"
+
+      - name: Verify Godot project
+        run: |
+          test -f project.godot || { echo "ERROR: project.godot not found in repository root"; exit 1; }
+          echo "Project found:"
+          ls -la
+          echo "Export presets:"
+          if [ -f export_presets.cfg ]; then
+            cat export_presets.cfg
+          else
+            echo "WARNING: export_presets.cfg not found"
+          fi
+
+      - name: Import project resources
+        run: |
+          godot --headless --path . --editor --import
+
+      - name: Build Android APK
         run: |
           mkdir -p build
-          godot --headless --path godot-port --editor --quit
-          godot --headless --path godot-port --export-debug "Android" build/deadland-after-zero-debug.apk
+          godot --headless --path . --editor --quit
+          godot --headless --path . --export-debug "Android" build/deadland-after-zero-debug.apk
+          test -s build/deadland-after-zero-debug.apk
 
-      - name: Upload APK
+      - name: Upload APK artifact
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: deadland-after-zero-debug-apk
           path: build/deadland-after-zero-debug.apk
+          if-no-files-found: error
+          retention-days: 7
