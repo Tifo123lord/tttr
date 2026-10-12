@@ -1,0 +1,48 @@
+
+name: Build Android APK
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Godot
+        uses: chickensoft-games/setup-godot@v2
+        with:
+          version: 4.4.1
+          use-dotnet: false
+
+      - name: Install Android SDK
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y android-sdk
+          echo "ANDROID_HOME=/usr/lib/android-sdk" >> "$GITHUB_ENV"
+
+      - name: Check project
+        run: |
+          find . -name project.godot
+          find . -name '*.gdextension'
+
+      - name: Build APK
+        run: |
+          mkdir -p build
+          godot --headless --path godot-port --editor --quit
+          godot --headless --path godot-port --export-debug "Android" build/deadland-after-zero-debug.apk
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: deadland-after-zero-debug-apk
+          path: build/deadland-after-zero-debug.apk
